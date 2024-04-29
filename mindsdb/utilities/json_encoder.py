@@ -1,13 +1,14 @@
-import base64
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import numpy as np
-from flask.json import JSONEncoder
 import pandas as pd
+import json
 
 
-class CustomJSONEncoder(JSONEncoder):
+class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
         if pd.isnull(obj):
             return None
         if isinstance(obj, timedelta):
@@ -24,14 +25,3 @@ class CustomJSONEncoder(JSONEncoder):
             return float(obj)
 
         return str(obj)
-
-
-def json_serialiser(byte_obj):
-    """
-    Used to export/import predictors inside the model controller.
-    Reference: https://stackoverflow.com/q/53942948.
-    """
-    if isinstance(byte_obj, (bytes, bytearray)):
-        # File Bytes to Base64 Bytes then to String
-        return base64.b64encode(byte_obj).decode('utf-8')
-    raise ValueError('No encoding handler for data type ' + type(byte_obj))

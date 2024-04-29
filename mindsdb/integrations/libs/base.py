@@ -1,16 +1,16 @@
 import ast
 import inspect
-import logging
 import textwrap
 from _ast import AnnAssign, AugAssign
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from mindsdb_sql.parser.ast.base import ASTNode
+from mindsdb.utilities import log
 
 from mindsdb.integrations.libs.response import HandlerResponse, HandlerStatusResponse
 
-LOG = logging.getLogger(__name__)
+logger = log.getLogger(__name__)
 
 
 class BaseHandler:
@@ -113,17 +113,6 @@ class DatabaseHandler(BaseHandler):
         super().__init__(name)
 
 
-class PredictiveHandler(BaseHandler):
-    """
-    DEPRECATED. Please refer to BaseMLEngine for integrations with machine learning frameworks.
-
-    Base class for handlers associated to predictive systems.
-    """
-
-    def __init__(self, name: str):
-        super().__init__(name)
-
-
 class ArgProbeMixin:
     """
     A mixin class that provides probing of arguments that
@@ -208,7 +197,7 @@ class ArgProbeMixin:
         try:
             source_code = self.get_source_code(method_name)
         except Exception as e:
-            LOG.error(
+            logger.error(
                 f"Failed to get source code of method {method_name} in {self.__class__.__name__}. Reason: {e}"
             )
             return []
@@ -335,18 +324,30 @@ class BaseMLEngine(ArgProbeMixin):
         raise NotImplementedError
 
     def describe(self, attribute: Optional[str] = None) -> pd.DataFrame:
-        """
-        Optional.
+        """Optional.
 
         When called, this method provides global model insights, e.g. framework-level parameters used in training.
         """
         raise NotImplementedError
 
-    def create_engine(self, connection_args: dict):
+    def update(self, args: dict) -> None:
+        """Optional.
+
+        Update model.
         """
-        Optional.
+        raise NotImplementedError
+
+    def create_engine(self, connection_args: dict):
+        """Optional.
 
         Used to connect with external sources (e.g. a REST API) that the engine will require to use any other methods.
+        """
+        raise NotImplementedError
+
+    def update_engine(self, connection_args: dict):
+        """Optional.
+
+        Used when need to change connection args or do any make any other changes to the engine
         """
         raise NotImplementedError
 

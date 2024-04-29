@@ -21,7 +21,7 @@ Under the hood, the model splits data into the training, validation, and testing
 
 Users can either use [Lightwood’s default mixers/models](/integrations/ai-engines/lightwood#model-key) or create their own approaches inherited from the `BaseMixer` class.
 
-To learn more about Lightwood philosophy, follow [this link](https://lightwood.io/lightwood_philosophy.html).
+To learn more about Lightwood philosophy, follow [this link](https://mindsdb.github.io/lightwood/lightwood_philosophy.html).
 
 ## Accuracy Metrics
 
@@ -52,11 +52,11 @@ The values vary between 0 and 1, where 1 indicates a perfect predictor, based on
 You can check accuracy values for models using the [`DESCRIBE`](/sql/api/describe) statement.
 </Note>
 
-## Tuning the Lightwood ML Engine Features
+## Tuning the Lightwood ML Engine
 
 ### Description
 
-In MindsDB, the underlying AutoML models are based on the [Lightwood](https://lightwood.io/) engine by default. This library generates models automatically based on the data and declarative problem definition. But the default configuration can be overridden using the `USING` statement that provides an option to configure specific parameters of the training process.
+In MindsDB, the underlying AutoML models are based on the [Lightwood](https://mindsdb.github.io/lightwood/index.html) engine by default. This library generates models automatically based on the data and declarative problem definition. But the default configuration can be overridden using the `USING` statement that provides an option to configure specific parameters of the training process.
 
 In the upcoming version of MindsDB, it will be possible to choose from more ML frameworks. Please note that the Lightwood engine is used by default.
 
@@ -81,7 +81,7 @@ It grants access to configure how each column is encoded. By default, the AutoML
 USING encoders.column_name.module = 'value';
 ```
 
-To learn more about `encoders` and their options, visit the [Lightwood documentation page on encoders](https://lightwood.io/encoder.html).
+To learn more about `encoders` and their options, visit the [Lightwood documentation page on encoders](https://mindsdb.github.io/lightwood/encoder.html).
 
 #### `model` Key
 
@@ -96,28 +96,28 @@ Here are the model options:
 
 | Model                                                               | Description                                                                                                                                                                                                                                                                         |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [BaseMixer](https://lightwood.io/mixer.html#mixer.BaseMixer)         | It is a base class for all mixers.                                                                                                                                                                                                                                                  |
-| [LightGBM](https://lightwood.io/mixer.html#mixer.LightGBM)           | This mixer configures and uses LightGBM for regression or classification tasks depending on the problem definition.                                                                                                                                                                 |
-| [LightGBMArray](https://lightwood.io/mixer.html#mixer.LightGBMArray) | This mixer consists of several LightGBM mixers in regression mode aimed at time series forecasting tasks.                                                                                                                                                                           |
-| [NHitsMixer](https://lightwood.io/mixer.html#mixer.NHitsMixer)       | This mixer is a wrapper around an MQN-HITS deep learning model.                                                                                                                                                                                                                     |
-| [Neural](https://lightwood.io/mixer.html#mixer.Neural)               | This mixer trains a fully connected dense network from concatenated encoded outputs of each feature in the dataset to predict the encoded output.                                                                                                                                   |
-| [NeuralTs](https://lightwood.io/mixer.html#mixer.NeuralTs)           | This mixer inherits from Neural mixer and should be used for time series forecasts.                                                                                                                                   |
-| [ProphetMixer](https://lightwood.io/mixer.html#mixer.ProphetMixer)   | This mixer is a wrapper around the popular time series library [Prophet](https://facebook.github.io/prophet/).                                                                                                                                                                      |                                        |
-| [RandomForest](https://lightwood.io/mixer.html#mixer.RandomForest)   | This mixer supports both regression and classification tasks. It inherits from sklearn.ensemble.RandomForestRegressor and sklearn.ensemble.RandomForestClassifier.                                                                                                                                            |
-| [Regression](https://lightwood.io/mixer.html#mixer.Regression)       | This mixer inherits from [scikit-learn’s Ridge class](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html).                                                                                                                                           |
-| [SkTime](https://lightwood.io/mixer.html#mixer.SkTime)               | This mixer is a wrapper around the popular time series library sktime.                                                                                                                                                                                                              |
-| [Unit](https://lightwood.io/mixer.html#mixer.Unit)                   | This is a special mixer that passes along whatever prediction is made by the target encoder without modifications. It is used for single-column predictive scenarios that may involve complex and/or expensive encoders (e.g. free-form text classification with transformers).     |
-| [XGBoostMixer](https://lightwood.io/mixer.html#mixer.XGBoostMixer)   | This mixer is a good all-rounder, due to the generally great performance of tree-based ML algorithms for supervised learning tasks with tabular data.     |
+| [BaseMixer](https://mindsdb.github.io/lightwood/mixer.html#mixer.BaseMixer)         | It is a base class for all mixers.                                                                                                                                                                                                                                                  |
+| [LightGBM](https://mindsdb.github.io/lightwood/mixer.html#mixer.LightGBM)           | This mixer configures and uses LightGBM for regression or classification tasks depending on the problem definition.                                                                                                                                                                 |
+| [LightGBMArray](https://mindsdb.github.io/lightwood/mixer.html#mixer.LightGBMArray) | This mixer consists of several LightGBM mixers in regression mode aimed at time series forecasting tasks.                                                                                                                                                                           |
+| [NHitsMixer](https://mindsdb.github.io/lightwood/mixer.html#mixer.NHitsMixer)       | This mixer is a wrapper around an MQN-HITS deep learning model.                                                                                                                                                                                                                     |
+| [Neural](https://mindsdb.github.io/lightwood/mixer.html#mixer.Neural)               | This mixer trains a fully connected dense network from concatenated encoded outputs of each feature in the dataset to predict the encoded output.                                                                                                                                   |
+| [NeuralTs](https://mindsdb.github.io/lightwood/mixer.html#mixer.NeuralTs)           | This mixer inherits from Neural mixer and should be used for time series forecasts.                                                                                                                                   |
+| [ProphetMixer](https://mindsdb.github.io/lightwood/mixer.html#mixer.ProphetMixer)   | This mixer is a wrapper around the popular time series library [Prophet](https://facebook.github.io/prophet/).                                                                                                                                                                      |                                        |
+| [RandomForest](https://mindsdb.github.io/lightwood/mixer.html#mixer.RandomForest)   | This mixer supports both regression and classification tasks. It inherits from sklearn.ensemble.RandomForestRegressor and sklearn.ensemble.RandomForestClassifier.                                                                                                                                            |
+| [Regression](https://mindsdb.github.io/lightwood/mixer.html#mixer.Regression)       | This mixer inherits from [scikit-learn’s Ridge class](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html).                                                                                                                                           |
+| [SkTime](https://mindsdb.github.io/lightwood/mixer.html#mixer.SkTime)               | This mixer is a wrapper around the popular time series library sktime.                                                                                                                                                                                                              |
+| [Unit](https://mindsdb.github.io/lightwood/mixer.html#mixer.Unit)                   | This is a special mixer that passes along whatever prediction is made by the target encoder without modifications. It is used for single-column predictive scenarios that may involve complex and/or expensive encoders (e.g. free-form text classification with transformers).     |
+| [XGBoostMixer](https://mindsdb.github.io/lightwood/mixer.html#mixer.XGBoostMixer)   | This mixer is a good all-rounder, due to the generally great performance of tree-based ML algorithms for supervised learning tasks with tabular data.     |
 
 <Note>
 Please note that not all mixers are available in our cloud environment. In particular, LightGBM, LightGBMArray, NHITS, and Prophet.
 </Note>
 
-To learn more about all the `model` options, visit the [Lightwood documentation page on mixers](https://lightwood.io/mixer.html).
+To learn more about all the `model` options, visit the [Lightwood documentation page on mixers](https://mindsdb.github.io/lightwood/mixer.html).
 
 #### Other Keys Supported by Lightwood in JsonAI
 
-The most common use cases of configuring predictors use `encoders` and `model` keys explained above. To see all the available keys, check out the [Lightwood documentation page on JsonAI](https://lightwood.io/api/types.html#api.types.JsonAI).
+The most common use cases of configuring predictors use `encoders` and `model` keys explained above. To see all the available keys, check out the [Lightwood documentation page on JsonAI](https://mindsdb.github.io/lightwood/api/types.html#api.types.JsonAI).
 
 ### Example
 
@@ -142,10 +142,62 @@ USING
                 ]};
 ```
 
+## Explainability
+
+With Lightwood, you can deploy the following types of models:
+
+- regressions models,
+- classification models,
+- time-series models.
+
+Predictions made by each type of model come with an explanation column, as below.
+
+<AccordionGroup>
+
+<Accordion title="Regression">
+In the case of regression models, the `target_explain` column contains the following information:
+
+```
+{"predicted_value": 2951, "confidence": 0.99, "anomaly": null, "truth": null, "confidence_lower_bound": 2795, "confidence_upper_bound": 3107}
+```
+
 <Note>
-You can visit the comprehensive [Lightwood docs here](https://lightwood.io/).
+The upper and lower bounds are determined via conformal prediction, and correspond to the reported confidence score (which can be modified by the user).
+</Note>
+
+Try it out following [this tutorial](/use-cases/in-database_ml/home-rentals).
+</Accordion>
+
+<Accordion title="Classification">
+In the case of classification models, the `target_explain` column contains the following information:
+
+```
+{"predicted_value": "No", "confidence": 0.6629213483146067, "anomaly": null, "truth": null, "probability_class_No": 0.8561, "probability_class_Yes": 0.1439}
+```
+
+<Note>
+The `confidence` score is produced by the conformal prediction module and is well-calibrated. On the other hand, the `probability_class` comes directly from the model logits, which may be uncalibrated. Therefore, the `probability_class` score may be optimistic or pessimistic, i.e. coverage is not guaranteed to empirically match the reported score.
+</Note>
+
+Try it out following [this tutorial](/use-cases/in-database_ml/customer-churn).
+</Accordion>
+
+<Accordion title="Time-Series">
+In the case of time-series models, the `target_explain` column contains the following information:
+
+```
+{"predicted_value": 501618.3125, "confidence": 0.9991, "anomaly": false, "truth": null, "confidence_lower_bound": 500926.109375, "confidence_upper_bound": 502310.515625}
+```
+
+Try it out following [this tutorial](/use-cases/predictive_analytics/house-sales-forecasting).
+</Accordion>
+
+</AccordionGroup>
+
+<Note>
+You can visit the comprehensive [Lightwood docs here](https://mindsdb.github.io/lightwood/).
 </Note>
 
 <Tip>
-Check out the Lightwood tutorials [here](https://lightwood.io/tutorials.html).
+Check out the Lightwood tutorials [here](https://mindsdb.github.io/lightwood/tutorials.html).
 </Tip>

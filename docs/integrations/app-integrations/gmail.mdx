@@ -15,16 +15,20 @@ Please note that currently you can connect your Gmail account to local MindsDB i
 If you want to connect your Gmail account to MindsDB Cloud, you can upload the credentials file, for instance, to your S3 bucket and provide a link to it as a parameter.
 </Warning>
 
+## Prerequisites
+
+Before proceeding, ensure the following prerequisites are met:
+
+1. Install MindsDB locally via [Docker](/setup/self-hosted/docker) or [Docker Desktop](/setup/self-hosted/docker-desktop).
+2. To connect Gmail to MindsDB, install the required dependencies following [this instruction](/setup/self-hosted/docker#install-dependencies).
+3. Install or ensure access to Gmail.
+
 ## Connection
 
 The required arguments to establish a connection are as follows:
 
 * `credentials_file` local path to the credentials.json or `credentials_url` in case your file is uploaded to s3. Follow the instructions below to generate the credentials file.
 * `scopes` define the level of access granted. It is optional and by default it uses 'https://.../gmail.compose' and 'https://.../gmail.readonly' scopes.
-* 
-<Tip>
-If you installed MindsDB locally via pip, you need to install all handler dependencies manually. To do so, go to the handler's folder (mindsdb/integrations/handlers/gmail_handler) and run this command: `pip install -r requirements.txt`.
-</Tip>
 
 In order to make use of this handler and connect the Google Calendar app to MindsDB, the following syntax can be used:
 
@@ -81,7 +85,7 @@ You need a Google account in order to use this integration. Here is how to get t
 
     Now, create the OAuth client ID. Choose `Web application` for the Application Type and give it a name.
 
-    3.4 Add the following MindsDB URL to `Authorized JavaScript origins` and `Authorized redirect URIs` : 
+    3.4 Add the following MindsDB URL to `Authorized redirect URIs`: 
         - For local installation, add `http://localhost/verify-auth`
         - For Cloud, add `http://cloud.mindsdb.com/verify-auth`.
 
@@ -90,10 +94,6 @@ You need a Google account in order to use this integration. Here is how to get t
 4. Download the JSON file:
 
     4.1 After creating your credentials, click the download button (an icon of an arrow pointing down) on the right side of your client ID. This will download a JSON file, so you will use the location to it in the `credentials_file` param. 
-</Tip>
-
-<Tip>
-If you installed MindsDB locally via pip, you need to install all handler dependencies manually. To do so, go to the handler's folder (mindsdb/integrations/handlers/gmail_handler) and run this command: `pip install -r requirements.txt`.
 </Tip>
 
 ## Usage
@@ -124,11 +124,22 @@ Now you can use your Gmail data, like this:
 
 Now that we know how to pull emails into our database and write emails, we can make use of OpenAPI engine to write email replies.
 
+First, create an OpenAI engine, passing your OpenAI API key:
+
+```sql
+CREATE ML_ENGINE openai_engine
+FROM openai
+USING
+    openai_api_key = 'your-openai-api-key';
+```
+
+Then, create a model using this engine:
+
 ```sql
 CREATE MODEL mindsdb.gpt_model
 PREDICT response
 USING
-    engine = 'openai',
+    engine = 'openai_engine',
     max_tokens = 500,
     api_key = 'your_api_key', 
     model_name = 'gpt-3.5-turbo',

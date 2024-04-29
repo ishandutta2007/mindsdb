@@ -13,6 +13,7 @@ from mindsdb.utilities.config import Config
 from mindsdb.interfaces.model.model_controller import ModelController
 from mindsdb.interfaces.database.views import ViewController
 from mindsdb.utilities.context import context as ctx
+from mindsdb.utilities.exception import EntityExistsError
 import mindsdb.utilities.profiler as profiler
 
 
@@ -34,7 +35,7 @@ class Project:
             & (db.Project.deleted_at == sa.null())
         ).first()
         if existing_record is not None:
-            raise Exception(f"Project with name '{name}' already exists")
+            raise EntityExistsError('Project already exists', name)
 
         record = db.Project(
             name=name,
@@ -210,6 +211,29 @@ class Project:
 
         return data
 
+    def get_agents(self):
+        records = (
+            db.session.query(db.Agents).filter_by(
+                project_id=self.id,
+                company_id=ctx.company_id
+            )
+            .order_by(db.Agents.name)
+            .all()
+        )
+        data = [
+            {
+                'name': record.name,
+                'query': record.query,
+                'metadata': {
+                    'type': 'agent',
+                    'id': record.id,
+                    'deletable': True
+                }
+            }
+            for record in records
+        ]
+        return data
+
     def get_views(self):
         records = (
             db.session.query(db.View).filter_by(
@@ -253,11 +277,6 @@ class Project:
     def get_tables(self):
         data = OrderedDict()
         data['models'] = {'type': 'table', 'deletable': False}
-        data['models_versions'] = {'type': 'table', 'deletable': False}
-        data['jobs'] = {'type': 'table', 'deletable': False}
-        data['jobs_history'] = {'type': 'table', 'deletable': False}
-        data['mdb_triggers'] = {'type': 'table', 'deletable': False}
-        data['chatbots'] = {'type': 'table', 'deletable': False}
 
         models = self.get_models()
         for model in models:
@@ -267,6 +286,10 @@ class Project:
         views = self.get_views()
         for view in views:
             data[view['name']] = view['metadata']
+
+        agents = self.get_agents()
+        for agent in agents:
+            data[agent['name']] = agent['metadata']
 
         return data
 

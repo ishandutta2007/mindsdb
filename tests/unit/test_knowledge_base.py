@@ -68,14 +68,14 @@ class TestKnowledgeBase(BaseExecutorTest):
             }
         )
 
-        self.set_handler(mock_handler, "pg", tables={"df": df})
+        self.save_file("df", df)
 
         # create the table
         vectordatabase_table_name = "test_table"
         sql = f"""
             CREATE TABLE chroma_test.{vectordatabase_table_name}
             (
-                SELECT * FROM pg.df
+                SELECT * FROM files.df
             )
         """
         self.run_sql(sql)
@@ -105,7 +105,7 @@ class TestKnowledgeBase(BaseExecutorTest):
         self.run_sql(f"DROP DATABASE {self.vector_database_name}")
 
     def test_create_kb(self):
-        # create a knowledge base
+        # create knowledge base
         sql = f"""
             CREATE KNOWLEDGE BASE test_kb
             USING
@@ -119,21 +119,22 @@ class TestKnowledgeBase(BaseExecutorTest):
         assert kb_obj is not None
 
         # create a knowledge base from select
-        sql = f"""
-            CREATE KNOWLEDGE BASE test_kb2
-            FROM (
-                SELECT content, embeddings, metadata
-                FROM {self.vector_database_name}.{self.vector_database_table_name}
-            )
-            USING
-            MODEL = {self.embedding_model_name},
-            STORAGE = {self.vector_database_name}.{self.vector_database_table_name}
-        """
+        # todo this should be supported but isn't yet
 
-        # TODO: this is to be supported
+        # sql = f"""
+        #     CREATE KNOWLEDGE BASE test_kb2
+        #     FROM (
+        #         SELECT content, embeddings, metadata
+        #         FROM {self.vector_database_name}.{self.vector_database_table_name}
+        #     )
+        #     USING
+        #     MODEL = {self.embedding_model_name},
+        #     STORAGE = {self.vector_database_name}.{self.vector_database_table_name}
+        # """
+        #
         # self.run_sql(sql)
-
-        # verify the knowledge base is created
+        #
+        # # verify the knowledge base is created
         # kb_obj = self.db.session.query(KnowledgeBase).filter_by(name="test_kb2").first()
         # assert kb_obj is not None
 
@@ -155,6 +156,35 @@ class TestKnowledgeBase(BaseExecutorTest):
         """
         with pytest.raises(Exception):
             self.run_sql(sql)
+
+        # create a knowledge base without a storage name, default should be used
+
+        sql = f"""
+            CREATE KNOWLEDGE BASE test_kb5
+            USING
+            MODEL = {self.embedding_model_name}
+        """
+
+        self.run_sql(sql)
+
+        # verify the knowledge base is created
+        kb_obj = self.db.session.query(KnowledgeBase).filter_by(name="test_kb5").first()
+        assert kb_obj is not None
+        assert kb_obj.vector_database.name == "test_kb5_chromadb"
+
+        # create a knowledge base without a model name, default should be used
+        sql = f"""
+            CREATE KNOWLEDGE BASE test_kb6
+            USING
+            STORAGE = {self.vector_database_name}.{self.vector_database_table_name}
+        """
+
+        self.run_sql(sql)
+
+        # verify the knowledge base is created
+        kb_obj = self.db.session.query(KnowledgeBase).filter_by(name="test_kb6").first()
+        assert kb_obj is not None
+        assert kb_obj.embedding_model.name == "test_kb6_default_model"
 
     def test_drop_kb(self):
         # create a knowledge base
@@ -222,14 +252,13 @@ class TestKnowledgeBase(BaseExecutorTest):
             SELECT *
             FROM test_kb
             WHERE
-                search_query = 'some query'
+                content = 'some query'
             LIMIT 1
         """
         df = self.run_sql(sql)
         assert df.shape[0] == 1
 
-    @pytest.mark.skip(reason="Not implemented")
-    def insert_into_kb(self):
+    def test_insert_into_kb(self):
         # create the knowledge base
         sql = f"""
             CREATE KNOWLEDGE BASE test_kb
@@ -241,13 +270,14 @@ class TestKnowledgeBase(BaseExecutorTest):
 
         # insert into the knowledge base using values
         sql = """
-            INSERT INTO test_kb
-            VALUES (
-                'id4',
-                'content4',
-                '[4, 5, 6]',
-                '{"d": 4}'
-            )
+                INSERT INTO test_kb (id, content, embeddings, metadata)
+                VALUES (
+                    'id4',
+                    'content4',
+                    '[4, 5, 6]',
+                    '{"d": 4}'
+                )
+
         """
         self.run_sql(sql)
 
@@ -265,7 +295,7 @@ class TestKnowledgeBase(BaseExecutorTest):
             INSERT INTO test_kb
             SELECT
                 content, metadata
-            FROM pg.df
+            FROM files.df
         """
         self.run_sql(sql)
 
@@ -276,7 +306,7 @@ class TestKnowledgeBase(BaseExecutorTest):
         """
 
         df = self.run_sql(sql)
-        assert df.shape[0] == 6
+        assert df.shape[0] == 7
 
     @pytest.mark.skip(reason="Not implemented")
     def test_update_kb(self):
@@ -348,3 +378,72 @@ class TestKnowledgeBase(BaseExecutorTest):
         """
         df = self.run_sql(sql)
         assert df.shape[0] == 1
+
+    def test_kb_params(self):
+
+        df = pd.DataFrame([
+            {'id': 1, 'ticket': 'NFLX', 'value': 532, 'created_at': '2020-01-01', 'ma': 100},
+            {'id': 2, 'ticket': 'MSFT', 'value': 311, 'created_at': '2020-01-02', 'ma': 200},
+        ])
+
+        self.save_file('stock', df)
+
+        # ---- default ----
+        self.run_sql('create knowledge base kb_test')
+        self.run_sql('INSERT INTO kb_test select * from files.stock')
+        ret = self.run_sql("select * from kb_test where content='msft'")
+        self.run_sql('drop knowledge base kb_test')  # have to drop KB with model and vector sore before assertions
+
+        # second row is the result, all columns in content
+        content = ret.content[0]
+        assert 'MSFT' in content and 'created_at' in content and '311' in content and '200' in content
+
+        # metadata is empty
+        assert ret.metadata[0] is None
+
+        # id = 2
+        assert ret.id[0] == '2'
+
+        # ---- choose content ----
+        self.run_sql('''
+           create knowledge base kb_test
+           using content_columns = ['ticket', 'value']
+        ''')
+        self.run_sql('INSERT INTO kb_test select * from files.stock')
+        ret = self.run_sql("select * from kb_test where content='msft'")
+        self.run_sql('drop knowledge base kb_test')
+
+        metadata = ret.metadata[0]
+        content = ret.content[0]
+        # ticket and value in content
+        assert 'MSFT' in content and '311' in content
+        # created and ma in metadata
+        assert 'created_at' in metadata and 'ma' in metadata
+
+        # ---- choose metadata ----
+        self.run_sql('''
+           create knowledge base kb_test
+           using metadata_columns = ['created_at', 'value']
+        ''')
+        self.run_sql('INSERT INTO kb_test select * from files.stock')
+        ret = self.run_sql("select * from kb_test where content='msft'")
+        self.run_sql('drop knowledge base kb_test')
+
+        metadata = ret.metadata[0]
+        content = ret.content[0]
+        # ticket and ma in content
+        assert 'MSFT' in content and '200' in content
+        # created and value in metadata
+        assert 'created_at' in metadata and 'value' in metadata
+
+        # ---- choose id ----
+        self.run_sql('''
+           create knowledge base kb_test
+           using id_column='ma'
+        ''')
+        self.run_sql('INSERT INTO kb_test select * from files.stock')
+        ret = self.run_sql("select * from kb_test where content='msft'")
+        self.run_sql('drop knowledge base kb_test')
+
+        # id = 200
+        assert ret.id[0] == '200'

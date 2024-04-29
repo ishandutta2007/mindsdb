@@ -1,16 +1,22 @@
 import copy
 import datetime as dt
-import importlib
 import json
 import os
 import sys
 import tempfile
+import time
 from unittest import mock
+from pathlib import Path
+from prometheus_client import REGISTRY
 
 import duckdb
 import numpy as np
 import pandas as pd
+from mindsdb.utilities import log
 from mindsdb_sql.render.sqlalchemy_render import SqlalchemyRender
+from mindsdb_sql import parse_sql
+
+logger = log.getLogger(__name__)
 
 
 def unload_module(path):
@@ -33,7 +39,6 @@ class BaseUnitTest:
 
     @staticmethod
     def setup_class(cls):
-
         # remove imports of mindsdb in previous tests
         unload_module("mindsdb")
 
@@ -62,15 +67,22 @@ class BaseUnitTest:
 
         from multiprocessing import dummy
 
-        mp_patcher = mock.patch("torch.multiprocessing.get_context").__enter__()
-        mp_patcher.side_effect = lambda x: dummy
+        # We might not have torch installed. So ignore any errors
+        try:
+            mp_patcher = mock.patch("torch.multiprocessing.get_context").__enter__()
+            mp_patcher.side_effect = lambda x: dummy
+        except Exception:
+            mp_patcher = mock.patch("multiprocessing.get_context").__enter__()
+            mp_patcher.side_effect = lambda x: dummy
 
     @staticmethod
     def teardown_class(cls):
-
         # remove tmp db file
         cls.db.session.close()
-        os.unlink(cls.db_file)
+        try:
+            os.unlink(cls.db_file)
+        except PermissionError as e:
+            logger.warning('Unable to clean up temporary database file: %s', str(e))
 
         # remove environ for next tests
         del os.environ["MINDSDB_DB_CON"]
@@ -79,7 +91,15 @@ class BaseUnitTest:
         unload_module("mindsdb")
 
     def setup_method(self):
+        self._dummy_db_path = os.path.join(tempfile.mkdtemp(), '_mindsdb_duck_db')
         self.clear_db(self.db)
+        self.reset_prom_collectors()
+
+    def teardown_method(self):
+        try:
+            os.unlink(self._dummy_db_path)
+        except (PermissionError, FileNotFoundError) as e:
+            logger.warning('Unable to clean up temporary database file: %s', str(e))
 
     def clear_db(self, db):
         # drop
@@ -94,37 +114,7 @@ class BaseUnitTest:
         db.session.add(r)
         r = db.Integration(name="views", data={}, engine="views")
         db.session.add(r)
-        r = db.Integration(name="autokeras", data={}, engine="autokeras")
-        db.session.add(r)
-        r = db.Integration(name="autogluon", data={}, engine="autogluon")
-        db.session.add(r)
-        r = db.Integration(name="huggingface", data={}, engine="huggingface")
-        db.session.add(r)
-        r = db.Integration(name="merlion", data={}, engine="merlion")
-        db.session.add(r)
-        r = db.Integration(name="monkeylearn", data={}, engine="monkeylearn")
-        db.session.add(r)
-        r = db.Integration(name="statsforecast", data={}, engine="statsforecast")
-        db.session.add(r)
-        r = db.Integration(name="dummy_ml", data={}, engine="dummy_ml")
-        db.session.add(r)
-        r = db.Integration(name="neuralforecast", data={}, engine="neuralforecast")
-        db.session.add(r)
-        r = db.Integration(
-            name="popularity_recommender", data={}, engine="popularity_recommender"
-        )
-        db.session.add(r)
-        r = db.Integration(name="lightfm", data={}, engine="lightfm")
-        db.session.add(r)
-        r = db.Integration(name="openai", data={}, engine="openai")
-        db.session.add(r)
-        r = db.Integration(name="anyscale_endpoints", data={}, engine="anyscale_endpoints")
-        db.session.add(r)
-        r = db.Integration(
-            name="langchain_embedding", data={}, engine="langchain_embedding"
-        )
-        db.session.add(r)
-        r = db.Integration(name="rag", data={}, engine="rag")
+        r = db.Integration(name="dummy_data", data={'db_path': self._dummy_db_path}, engine="dummy_data")
         db.session.add(r)
 
         # Lightwood should always be last (else tests break, why?)
@@ -142,13 +132,53 @@ class BaseUnitTest:
         db.session.commit()
         return db
 
+    def set_data(self, table, data):
+        con = duckdb.connect(self._dummy_db_path)
+        con.execute('DROP TABLE IF EXISTS {}'.format(table))
+        con.execute('CREATE TABLE {} AS SELECT * FROM data'.format(table))
+
+    def wait_predictor(self, project, name, timeout=100):
+        """
+        Wait for the predictor to be created,
+        raising an exception if predictor creation fails or exceeds timeout
+        """
+        for attempt in range(timeout):
+            ret = self.run_sql(f"select * from {project}.models where name='{name}'")
+            if not ret.empty:
+                status = ret["STATUS"][0]
+                if status == "complete":
+                    return
+                elif status == "error":
+                    raise RuntimeError("Predictor failed", ret["ERROR"][0])
+            time.sleep(0.5)
+        raise RuntimeError("Predictor wasn't created")
+
+    def run_sql(self, sql):
+        """Execute SQL and return a DataFrame, raising an AssertionError if an error occurs"""
+        ret = self.command_executor.execute_command(parse_sql(sql, dialect="mindsdb"))
+        assert ret.error_code is None, f"SQL execution failed with error: {ret.error_code}"
+        if ret.data is not None:
+            columns = [col.alias if col.alias else col.name for col in ret.columns]
+            return pd.DataFrame(ret.data, columns=columns)
+
     @staticmethod
     def ret_to_df(ret):
         # converts executor response to dataframe
-        columns = [
-            col.alias if col.alias is not None else col.name for col in ret.columns
-        ]
+        columns = [col.alias if col.alias is not None else col.name for col in ret.columns]
         return pd.DataFrame(ret.data, columns=columns)
+
+    def reset_prom_collectors(self) -> None:
+        """Resets collectors in the default Prometheus registry.
+
+        Modifies the `REGISTRY` registry. Supposed to be called at the beginning
+        of individual test functions. Else registry is reused across test functions
+        and so we can run into errors like duplicate metrics or unexpected values
+        for metrics.
+        """
+        # Unregister all collectors.
+        collectors = list(REGISTRY._collector_to_names.keys())
+        for collector in collectors:
+            REGISTRY.unregister(collector)
 
 
 class BaseExecutorTest(BaseUnitTest):
@@ -161,13 +191,17 @@ class BaseExecutorTest(BaseUnitTest):
         self.set_executor()
 
     def set_executor(
-        self, mock_lightwood=False, mock_model_controller=False, import_dummy_ml=False
+        self,
+        mock_lightwood=False,
+        mock_model_controller=False,
+        import_dummy_ml=False,
+        import_dummy_llm=False,
     ):
         # creates executor instance with mocked model_interface
-        from mindsdb.api.mysql.mysql_proxy.controllers.session_controller import (
+        from mindsdb.api.executor.controllers.session_controller import (
             SessionController,
         )
-        from mindsdb.api.mysql.mysql_proxy.executor.executor_commands import (
+        from mindsdb.api.executor.command_executor import (
             ExecuteCommands,
         )
         from mindsdb.interfaces.database.integrations import integration_controller
@@ -187,28 +221,33 @@ class BaseExecutorTest(BaseUnitTest):
         # self.mock_model_controller.get_models.side_effect = lambda: []
 
         if import_dummy_ml:
-            spec = importlib.util.spec_from_file_location(
-                "dummy_ml_handler", "./tests/unit/dummy_ml_handler/__init__.py"
-            )
-            foo = importlib.util.module_from_spec(spec)
-            sys.modules["dummy_ml_handler"] = foo
-            spec.loader.exec_module(foo)
+            test_handler_path = os.path.dirname(__file__)
+            sys.path.append(test_handler_path)
 
-            handler_module = sys.modules["dummy_ml_handler"]
-            handler_meta = integration_controller._get_handler_meta(handler_module)
-            integration_controller.handlers_import_status[
-                handler_meta["name"]
-            ] = handler_meta
+            handler_dir = Path(test_handler_path) / 'dummy_ml_handler'
+            integration_controller.import_handler('', handler_dir)
+
+            if not integration_controller.handlers_import_status['dummy_ml']['import']['success']:
+                error = integration_controller.handlers_import_status['dummy_ml']['import']['error_message']
+                raise Exception(f"Can not import: {str(handler_dir)}: {error}")
+
+        if import_dummy_llm:
+
+            test_handler_path = os.path.dirname(__file__)
+            sys.path.append(test_handler_path)
+
+            handler_dir = Path(test_handler_path) / 'dummy_llm_handler'
+            integration_controller.import_handler('', handler_dir)
+
+            if not integration_controller.handlers_import_status['dummy_llm']['import']['success']:
+                error = integration_controller.handlers_import_status['dummy_llm']['import']['error_message']
+                raise Exception(f"Can not import: {str(handler_dir)}: {error}")
 
         if mock_lightwood:
-            predict_patcher = mock.patch(
-                "mindsdb.integrations.libs.ml_exec_base.BaseMLEngineExec.predict"
-            )
+            predict_patcher = mock.patch("mindsdb.integrations.libs.ml_exec_base.BaseMLEngineExec.predict")
             self.mock_predict = predict_patcher.__enter__()
 
-            create_patcher = mock.patch(
-                "mindsdb.integrations.handlers.lightwood_handler.Handler.create"
-            )
+            create_patcher = mock.patch("mindsdb.integrations.handlers.lightwood_handler.Handler.create")
             self.mock_create = create_patcher.__enter__()
 
         ctx.set_default()
@@ -216,12 +255,21 @@ class BaseExecutorTest(BaseUnitTest):
         sql_session.database = "mindsdb"
         sql_session.integration_controller = integration_controller
 
-        self.command_executor = ExecuteCommands(sql_session, executor=None)
+        self.command_executor = ExecuteCommands(sql_session)
 
         # disable cache. it is need to check predictor input
         config_patch = mock.patch("mindsdb.utilities.cache.FileCache.get")
         self.mock_config = config_patch.__enter__()
         self.mock_config.side_effect = lambda x: None
+
+    def teardown_method(self):
+        # Don't want cache to pick up a stale version with the wrong duckdb_path.
+        self.command_executor.session.integration_controller.delete('dummy_data')
+
+    def save_file(self, name, df):
+        file_path = tempfile.mktemp(prefix="mindsdb_file_")
+        df.to_parquet(file_path)
+        self.file_controller.save_file(name, file_path, name)
 
     def set_handler(self, mock_handler, name, tables, engine="postgres"):
         # integration
@@ -289,9 +337,12 @@ class BaseExecutorTest(BaseUnitTest):
             for table, df in tables.items():
                 con.register(table, df)
             try:
-                result_df = con.execute(query).fetchdf()
+                con.execute(query)
+                columns = [c[0] for c in con.description]
+                result_df = pd.DataFrame(con.fetchall(), columns=columns)
+
                 result_df = result_df.replace({np.nan: None})
-            except:
+            except Exception:
                 # it can be not supported command like update or insert
                 result_df = pd.DataFrame()
             for table in tables.keys():
@@ -331,6 +382,30 @@ class BaseExecutorDummyML(BaseExecutorTest):
         super().setup_method()
         self.set_executor(import_dummy_ml=True)
 
+    def run_sql(self, sql, throw_error=True, database='mindsdb'):
+        self.command_executor.session.database = database
+        ret = self.command_executor.execute_command(
+            parse_sql(sql, dialect='mindsdb')
+        )
+        if throw_error:
+            assert ret.error_code is None
+        if ret.data is not None:
+            columns = [
+                col.alias if col.alias is not None else col.name
+                for col in ret.columns
+            ]
+            return pd.DataFrame(ret.data, columns=columns)
+
+
+class BaseExecutorDummyLLM(BaseExecutorTest):
+    """
+    Set up executor: mock LLM handler
+    """
+
+    def setup_method(self):
+        super().setup_method()
+        self.set_executor(import_dummy_llm=True)
+
 
 class BaseExecutorMockPredictor(BaseExecutorTest):
     """
@@ -355,9 +430,7 @@ class BaseExecutorMockPredictor(BaseExecutorTest):
             self.db.session.delete(r)
 
         if "problem_definition" not in predictor:
-            predictor["problem_definition"] = {
-                "timeseries_settings": {"is_timeseries": False}
-            }
+            predictor["problem_definition"] = {"timeseries_settings": {"is_timeseries": False}}
 
         # add predictor to table
         r = self.db.Predictor(
@@ -373,7 +446,6 @@ class BaseExecutorMockPredictor(BaseExecutorTest):
         self.db.session.commit()
 
         def predict_f(_model_name, data, pred_format="dict", *args, **kargs):
-            dict_arr = []
             explain_arr = []
             if isinstance(data, dict):
                 data = [data]
@@ -437,3 +509,13 @@ class BaseExecutorMockPredictor(BaseExecutorTest):
         self.mock_predict.side_effect = predict_f
         self.mock_model_controller.get_models.side_effect = lambda: [predictor_record]
         self.mock_model_controller.get_model_data.side_effect = get_model_data_f
+
+    def execute(self, sql):
+        ret = self.command_executor.execute_command(
+            parse_sql(sql, dialect='mindsdb')
+        )
+        if ret.error_code is not None:
+            raise Exception()
+        if isinstance(ret.data, list):
+            ret.records = self.ret_to_df(ret).to_dict('records')
+        return ret

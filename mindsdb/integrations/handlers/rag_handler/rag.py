@@ -2,28 +2,33 @@ import json
 from collections import defaultdict
 from typing import List
 
+from openai.types import Completion
+
 from mindsdb.integrations.handlers.rag_handler.settings import (
     LLMLoader,
     PersistedVectorStoreLoader,
     PersistedVectorStoreLoaderConfig,
+    RAGBaseParameters,
     RAGHandlerParameters,
     load_embeddings_model,
 )
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 
-logger = get_log(logger_name=__name__)
+logger = log.getLogger(__name__)
 
 
-class QuestionAnswerer:
+class RAGQuestionAnswerer:
     """A class for using a RAG model for question answering"""
 
-    def __init__(self, args: RAGHandlerParameters):
+    def __init__(self, args: RAGBaseParameters):
 
         self.output_data = defaultdict(list)
 
         self.args = args
 
-        self.embeddings_model = load_embeddings_model(args.embeddings_model_name)
+        self.embeddings_model = args.embeddings_model
+        if self.embeddings_model is None:
+            self.embeddings_model = load_embeddings_model(args.embeddings_model_name)
 
         self.persist_directory = args.vector_store_storage_path
 
@@ -42,11 +47,13 @@ class QuestionAnswerer:
 
         self.prompt_template = args.prompt_template
 
-        llm_config = {"llm_config": args.llm_params.dict()}
+        if isinstance(args, RAGHandlerParameters):
 
-        llm_loader = LLMLoader(**llm_config)
+            llm_config = {"llm_config": args.llm_params.dict()}
 
-        self.llm = llm_loader.load_llm()
+            llm_loader = LLMLoader(**llm_config)
+
+            self.llm = llm_loader.load_llm()
 
     def __call__(self, question: str) -> defaultdict:
         return self.query(question)
@@ -95,6 +102,8 @@ class QuestionAnswerer:
         try:
             if "choices" in data:
                 return data["choices"][0]["text"]
+            elif isinstance(data, Completion):
+                return data.choices[0].text
             else:
                 logger.info(
                     f"Error extracting generated text: failed to parse response {response}"
@@ -117,10 +126,10 @@ class QuestionAnswerer:
         sources = defaultdict(list)
 
         for idx, document in enumerate(vector_store_response):
-            sources["sources_document"].append(document.metadata["source"])
-            sources["column"].append(document.metadata.get("column"))
-            sources["sources_row"].append(document.metadata.get("row"))
             sources["sources_content"].append(document.page_content)
+            sources["sources_document"].append(document.metadata.get("source", None))
+            sources["column"].append(document.metadata.get("column", None))
+            sources["sources_row"].append(document.metadata.get("row", None))
 
         result["source_documents"].append(dict(sources))
 

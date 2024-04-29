@@ -1,7 +1,5 @@
-from mindsdb.integrations.handlers.autosklearn_handler.__about__ import (
+from .__about__ import (
     __description__ as description,
-)
-from mindsdb.integrations.handlers.autosklearn_handler.__about__ import (
     __version__ as version,
 )
 from mindsdb.integrations.libs.const import HANDLER_TYPE
@@ -17,6 +15,7 @@ except Exception as e:
 title = "LightFM-Recommender"
 name = "lightfm"
 type = HANDLER_TYPE.ML
-permanent = True
+icon_path = "icon.svg"
+permanent = False
 
-__all__ = ["Handler", "version", "name", "type", "title", "description", "import_error"]
+__all__ = ["Handler", "version", "name", "type", "title", "description", "import_error", "icon_path"]

@@ -3,8 +3,8 @@ import random
 
 import pytest
 
-from mindsdb.api.mysql.mysql_proxy.libs.constants.response_type import RESPONSE_TYPE
-from .http_test_helpers import HTTPHelperMixin
+from mindsdb.api.executor.data_types.response_type import RESPONSE_TYPE
+from tests.utils.http_test_helpers import HTTPHelperMixin
 
 
 # used by (required for) mindsdb_app fixture in conftest
@@ -36,7 +36,7 @@ class TestHTTP(HTTPHelperMixin):
         PARAMETERS = {
             "user": "demo_user",
             "password": "demo_password",
-            "host": "3.220.66.106",
+            "host": "samples.mindsdb.com",
             "port": "5432",
             "database": "demo"
             };
@@ -90,6 +90,16 @@ class TestHTTP(HTTPHelperMixin):
         assert len([x for x in data if x['group'] == 'a']) == 3
         assert data[0]['date'] == (datetime.date.today() + datetime.timedelta(days=30))
 
+    def test_gt_latest_date_empty_join(self):
+        sql = '''
+            select p.date, p.group, p.value
+            from mindsdb.testv as t join mindsdb.tstest as p
+            where t.date > LATEST and t.group = 'wrong'
+        '''
+        resp = self.sql_via_http(sql, RESPONSE_TYPE.TABLE)
+        data = to_dicts(resp['data'])
+        assert len(data) == 0
+
     def test_eq_latest_date(self):
         sql = '''
             select p.date, p.group, p.value
@@ -124,6 +134,6 @@ class TestHTTP(HTTPHelperMixin):
         '''
         resp = self.sql_via_http(sql, RESPONSE_TYPE.TABLE)
         data = to_dicts(resp['data'])
-        assert len(data) == 2
-        assert len([x for x in data if x['group'] == 'a']) == 1
-        assert data[0]['date'] == (datetime.date.today() + datetime.timedelta(days=15))
+        assert len(data) == 6  # 2 groups * 3 horizon
+        assert len([x for x in data if x['group'] == 'a']) == 3
+        assert data[0]['date'] == (datetime.date.today() + datetime.timedelta(days=16))

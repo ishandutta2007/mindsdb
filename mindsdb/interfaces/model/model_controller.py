@@ -1,8 +1,5 @@
-import copy
-import os
 import sys
-import json
-import base64
+import copy
 import datetime as dt
 from copy import deepcopy
 from multiprocessing.pool import ThreadPool
@@ -14,10 +11,7 @@ from sqlalchemy import func, null
 import numpy as np
 
 import mindsdb.interfaces.storage.db as db
-from mindsdb.interfaces.storage.fs import FsStore
 from mindsdb.utilities.config import Config
-from mindsdb.utilities.json_encoder import json_serialiser
-from mindsdb.api.mysql.mysql_proxy.libs.constants.response_type import RESPONSE_TYPE
 from mindsdb.interfaces.model.functions import (
     get_model_record,
     get_model_records
@@ -27,6 +21,10 @@ from mindsdb.interfaces.storage.model_fs import ModelStorage
 from mindsdb.utilities.context import context as ctx
 from mindsdb.utilities.functions import resolve_model_identifier
 import mindsdb.utilities.profiler as profiler
+from mindsdb.utilities.exception import EntityExistsError, EntityNotExistsError
+from mindsdb.utilities import log
+
+logger = log.getLogger(__name__)
 
 IS_PY36 = sys.version_info[1] <= 6
 
@@ -37,7 +35,7 @@ def delete_model_storage(model_id, ctx_dump):
         modelStorage = ModelStorage(model_id)
         modelStorage.delete()
     except Exception as e:
-        print(f'Something went wrong during deleting storage of model {model_id}: {e}')
+        logger.error(f'Something went wrong during deleting storage of model {model_id}: {e}')
 
 
 class ModelController():
@@ -107,38 +105,22 @@ class ModelController():
         return reduced_model_data
 
     def describe_model(self, session, project_name, model_name, attribute, version=None):
-        model_record = get_model_record(
-            name=model_name,
-            version=version,
-            project_name=project_name,
-            except_absent=True
-        )
+        args = {
+            'name': model_name,
+            'version': version,
+            'project_name': project_name,
+            'except_absent': True
+        }
+        if version is not None:
+            args['active'] = None
+
+        model_record = get_model_record(**args)
+
         integration_record = db.Integration.query.get(model_record.integration_id)
 
-        ml_handler_base = session.integration_controller.get_handler(integration_record.name)
+        ml_handler_base = session.integration_controller.get_ml_handler(integration_record.name)
 
-        ml_handler = ml_handler_base.get_ml_handler(model_record.id)
-
-        if attribute is None:
-            model_info = self.get_model_info(model_record)
-
-            try:
-                df = ml_handler.describe(attribute)
-            except NotImplementedError:
-                df = pd.DataFrame()
-
-            # expecting list of attributes in first column df
-            attributes = []
-            if len(df) > 0 and len(df.columns) > 0:
-                attributes = list(df[df.columns[0]])
-                if len(attributes) == 1 and isinstance(attributes[0], list):
-                    # first cell already has a list
-                    attributes = attributes[0]
-
-            model_info.insert(0, 'TABLES', [attributes])
-            return model_info
-        else:
-            return ml_handler.describe(attribute)
+        return ml_handler_base.describe(model_record.id, attribute)
 
     def get_model(self, name, version=None, ml_handler_name=None, project_name=None):
         show_active = True if version is None else None
@@ -189,7 +171,7 @@ class ModelController():
                 version=version,
             )
         if len(predictors_records) == 0:
-            raise Exception(f"Model '{model_name}' does not exist")
+            raise EntityNotExistsError('Model does not exist', model_name)
 
         is_cloud = self.config.get('cloud', False)
         if is_cloud:
@@ -238,11 +220,17 @@ class ModelController():
             integration_name = statement.integration_name.parts[0]
 
             databases_meta = database_controller.get_dict()
+            if integration_name not in databases_meta:
+                raise EntityNotExistsError('Database does not exist', integration_name)
             data_integration_meta = databases_meta[integration_name]
             # TODO improve here. Suppose that it is view
             if data_integration_meta['type'] == 'project':
                 data_integration_ref = {
                     'type': 'view'
+                }
+            elif data_integration_meta['type'] == 'system':
+                data_integration_ref = {
+                    'type': 'system'
                 }
             else:
                 data_integration_ref = {
@@ -305,16 +293,15 @@ class ModelController():
 
         existing_projects_meta = ml_handler.database_controller.get_dict(filter_type='project')
         if params['project_name'] not in existing_projects_meta:
-            raise Exception(f"Project '{params['project_name']}' does not exist.")
+            raise EntityNotExistsError('Project does not exist', params['project_name'])
 
         project = ml_handler.database_controller.get_project(name=params['project_name'])
         project_tables = project.get_tables()
         if params['model_name'] in project_tables:
-            raise Exception(f"Error: model '{params['model_name']}' already exists in project {params['project_name']}!")
-
+            raise EntityExistsError('Model already exists', f"{params['project_name']}.{params['model_name']}")
         predictor_record = ml_handler.learn(**params)
 
-        return self.get_model_info(predictor_record)
+        return ModelController.get_model_info(predictor_record)
 
     def retrain_model(self, statement, ml_handler):
         # active setting
@@ -349,7 +336,7 @@ class ModelController():
         params['set_active'] = set_active
         predictor_record = ml_handler.learn(**params)
 
-        return self.get_model_info(predictor_record)
+        return ModelController.get_model_info(predictor_record)
 
     def prepare_finetune_statement(self, statement, database_controller):
         project_name, model_name, model_version = resolve_model_identifier(statement.name)
@@ -399,7 +386,7 @@ class ModelController():
     def finetune_model(self, statement, ml_handler):
         params = self.prepare_finetune_statement(statement, ml_handler.database_controller)
         predictor_record = ml_handler.finetune(**params)
-        return self.get_model_info(predictor_record)
+        return ModelController.get_model_info(predictor_record)
 
     def update_model(self, session, project_name: str, model_name: str, problem_definition, version=None):
 
@@ -411,13 +398,8 @@ class ModelController():
         )
         integration_record = db.Integration.query.get(model_record.integration_id)
 
-        ml_handler_base = session.integration_controller.get_handler(integration_record.name)
-
-        ml_handler = ml_handler_base.get_ml_handler(model_record.id)
-        if not hasattr(ml_handler, 'update'):
-            raise Exception("ML handler doesn't updating")
-
-        ml_handler.update(args=problem_definition)
+        ml_handler_base = session.integration_controller.get_ml_handler(integration_record.name)
+        ml_handler_base.update(args=problem_definition, model_id=model_record.id)
 
         # update model record
         if 'using' in problem_definition:
@@ -426,7 +408,8 @@ class ModelController():
             model_record.learn_args = learn_args
             db.session.commit()
 
-    def get_model_info(self, predictor_record):
+    @staticmethod
+    def get_model_info(predictor_record):
         from mindsdb.interfaces.database.projects import ProjectController
         projects_controller = ProjectController()
         project = projects_controller.get(id=predictor_record.project_id)
@@ -447,30 +430,17 @@ class ModelController():
 
         return pd.DataFrame([record], columns=columns)
 
-    def update_model_version(self, models, active=None):
-        if active is None:
-            raise NotImplementedError(f'Update is not supported')
-
-        if active in ('0', 0, False):
-            active = False
-        else:
-            active = True
-
-        if active is False:
-            raise NotImplementedError('Only setting active version is possible')
-
-        if len(models) != 1:
-            raise Exception('Only one version can be updated')
-
-        # update
-        model = models[0]
+    def set_model_active_version(self, project_name, model_name, version):
 
         model_record = get_model_record(
-            name=model['NAME'],
-            project_name=model['PROJECT'],
-            version=model['VERSION'],
+            name=model_name,
+            project_name=project_name,
+            version=version,
             active=None
         )
+
+        if model_record is None:
+            raise EntityNotExistsError(f'Model {model_name} with version {version} is not found in {project_name}')
 
         model_record.active = True
 
@@ -478,7 +448,7 @@ class ModelController():
         model_records = db.Predictor.query.filter(
             db.Predictor.name == model_record.name,
             db.Predictor.project_id == model_record.project_id,
-            db.Predictor.active == True,
+            db.Predictor.active == True,    # noqa
             db.Predictor.company_id == ctx.company_id,
             db.Predictor.id != model_record.id
         )
@@ -487,26 +457,26 @@ class ModelController():
 
         db.session.commit()
 
-    def delete_model_version(self, models):
-        if len(models) == 0:
-            raise Exception(f"Version to delete is not found")
+    def delete_model_version(self, project_name, model_name, version):
 
-        for model in models:
-            model_record = get_model_record(
-                name=model['NAME'],
-                project_name=model['PROJECT'],
-                version=model['VERSION'],
-                active=None
-            )
-            if model_record.active:
-                raise Exception(f"Can't remove active version: {model['PROJECT']}.{model['NAME']}.{model['VERSION']}")
+        model_record = get_model_record(
+            name=model_name,
+            project_name=project_name,
+            version=version,
+            active=None
+        )
+        if model_record is None:
+            raise EntityNotExistsError(f'Model {model_name} with version {version} is not found in {project_name}')
 
-            is_cloud = self.config.get('cloud', False)
-            if is_cloud:
-                model_record.deleted_at = dt.datetime.now()
-            else:
-                db.session.delete(model_record)
-            modelStorage = ModelStorage(model_record.id)
-            modelStorage.delete()
+        if model_record.active:
+            raise Exception(f"Can't remove active version: {project_name}.{model_name}.{version}")
+
+        is_cloud = self.config.get('cloud', False)
+        if is_cloud:
+            model_record.deleted_at = dt.datetime.now()
+        else:
+            db.session.delete(model_record)
+        modelStorage = ModelStorage(model_record.id)
+        modelStorage.delete()
 
         db.session.commit()

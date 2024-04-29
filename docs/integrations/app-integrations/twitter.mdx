@@ -9,6 +9,14 @@ In this section, we present how to connect Twitter accounts to MindsDB.
 
 The Twitter handler enables you to fetch tweets and create replies utilizing AI models wthin MindsDB. Furthermore, you can automate the process of fetching tweets, preparing replies, and sending replies to Twitter.
 
+## Prerequisites
+
+Before proceeding, ensure the following prerequisites are met:
+
+1. Install MindsDB locally via [Docker](/setup/self-hosted/docker) or [Docker Desktop](/setup/self-hosted/docker-desktop).
+2. To connect Twitter to MindsDB, install the required dependencies following [this instruction](/setup/self-hosted/docker#install-dependencies).
+3. Install or ensure access to Twitter.
+
 ## Connection
 
 To connect a Twitter account to MindsDB, you need a Twitter developer account.
@@ -25,7 +33,7 @@ If you don't already have a Twitter developer account, follow the steps in the v
 
   [Begin here to apply for a Twitter developer account](https://developer.twitter.com/apply-for-access)
 
-  <div style={{position: "relative", paddingBottom: "59.602649006622514%", height: 0}}><iframe src="https://www.youtube.com/embed/qVe7PeC0sUQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share" style={{position: "absolute", top: 0, left: 0, width: "100%", height: "100%"}}></iframe></div>
+  <div style={{position: "relative", paddingBottom: "59.602649006622514%", height: 0}}><iframe src="https://www.youtube.com/embed/qVe7PeC0sUQ" title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share" style={{position: "absolute", top: 0, left: 0, width: "100%", height: "100%"}}></iframe></div>
 
   When presented with questions under *How will you use the Twitter API or Twitter Data?*, use answers similar to the ones below (tweak to fit your exact use case). The more thorough your answers are, the more likely it is your account will get approved.
 
@@ -100,10 +108,6 @@ WITH
 	  "access_token_secret": "twitter access token secret"
     };
 ```
-
-<Tip>
-If you installed MindsDB locally via pip, you need to install all handler dependencies manually. To do so, go to the handler's folder (mindsdb/integrations/handlers/twitter_handler) and run this command: `pip install -r requirements.txt`.
-</Tip>
 
 ## Usage
 

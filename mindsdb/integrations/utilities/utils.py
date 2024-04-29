@@ -1,3 +1,5 @@
+from typing import Any
+
 import sys
 
 
@@ -10,3 +12,21 @@ def format_exception_error(exception):
     except Exception:
         error_message = str(exception)
     return error_message
+
+
+def dict_to_yaml(d, indent=0):
+    yaml_str = ""
+    for k, v in d.items():
+        yaml_str += " " * indent + str(k) + ": "
+        if isinstance(v, dict):
+            yaml_str += "\n" + dict_to_yaml(v, indent + 2)
+        else:
+            yaml_str += str(v) + "\n"
+    return yaml_str
+
+
+# Mocks won't always have 'name' attribute.
+def get_class_name(instance: Any, default: str = 'unknown'):
+    if hasattr(instance.__class__, 'name'):
+        return instance.__class__.name
+    return default

@@ -1,4 +1,5 @@
 [flake8]
+min_python_version = 3.8.0
 max-line-length = 120
 ignore =
   # E402
@@ -7,7 +8,9 @@ ignore =
   # Line break occurred before a binary operator
   W503,
   # Function is too complex
-  C901
+  C901,
+  # https://www.flake8rules.com/rules/E721.html
+  E721
 per-file-ignores =
   mindsdb/__main__.py: E402
   mindsdb/api/mysql/mysql_proxy/libs/constants/mysql.py: E241
@@ -31,7 +34,6 @@ exclude =
   mindsdb/integrations/handlers/mlflow_handler/*
   mindsdb/integrations/handlers/monetdb_handler/*
   mindsdb/integrations/handlers/mongodb_handler/*
-  mindsdb/integrations/handlers/mssql_handler/*
   mindsdb/integrations/handlers/mysql_handler/tests/test_mysql_handler.py
   mindsdb/integrations/handlers/oracle_handler/oracle_handler.py
   mindsdb/integrations/handlers/pinot_handler/pinot_handler.py
@@ -53,13 +55,10 @@ exclude =
   mindsdb/integrations/handlers/dockerhub_handler/*
   mindsdb/integrations/libs/response.py
   mindsdb/integrations/utilities/utils.py
-  mindsdb/interfaces/model/model_controller.py
   mindsdb/migrations/env.py
-  mindsdb/utilities/log.py
   tests/handler_tests/test_storage_handler.py
   tests/integration_tests/flows/test_mysql_bin_api.py
   tests/prediction_latency_test/*
-  tests/unit/executor_test_base.py
   tests/unit/test_cache.py
   tests/unit/test_mongodb_handler.py
   tests/unit/test_mongodb_server.py
@@ -69,10 +68,7 @@ exclude =
   tests/unit/ml_handlers/test_ludwig.py
   tests/unit/ml_handlers/test_lightwood.py
   tests/unit/test_predictor_params.py
-  tests/unit/test_project_structure.py
   tests/unit/test_merlion_handler.py
-  mindsdb/integrations/handlers/byom_handler/byom_handler.py
-  mindsdb/integrations/handlers/byom_handler/proc_wrapper.py
   mindsdb/integrations/handlers/plaid_handler/*
   mindsdb/integrations/handlers/cohere_handler/*
   mindsdb/integrations/handlers/google_calendar_handler/*
@@ -111,6 +107,7 @@ exclude =
   mindsdb/integrations/handlers/google_fit_handler/*
   mindsdb/integrations/handlers/altibase_handler/*
   mindsdb/integrations/handlers/ms_teams_handler/*
+  mindsdb/integrations/handlers/discord_handler/*
   mindsdb/integrations/handlers/hana_handler/*
   mindsdb/integrations/handlers/sheets_handler/*
   mindsdb/integrations/handlers/autosklearn_handler/*
@@ -139,7 +136,6 @@ exclude =
   mindsdb/integrations/handlers/tpot_handler/*
   mindsdb/integrations/handlers/derby_handler/*
   mindsdb/integrations/handlers/scylla_handler/*
-  mindsdb/integrations/handlers/clickhouse_handler/*
   mindsdb/integrations/handlers/phoenix_handler/*
   mindsdb/integrations/handlers/replicate_handler/*
   mindsdb/integrations/handlers/pgvector_handler/*
@@ -158,12 +154,10 @@ exclude =
   mindsdb/integrations/handlers/hsqldb_handler/*
   mindsdb/integrations/handlers/newsapi_handler/*
   mindsdb/integrations/handlers/monkeylearn_handler/*
-  mindsdb/integrations/handlers/mysql_handler/*
   mindsdb/integrations/handlers/google_search_handler/*
   mindsdb/integrations/handlers/ollama_handler/*
   mindsdb/integrations/handlers/aurora_handler/*
   mindsdb/integrations/handlers/surrealdb_handler/*
   mindsdb/integrations/handlers/neuralforecast_handler/*
-  mindsdb/integrations/handlers/postgres_handler/*
   mindsdb/integrations/handlers/rag_handler/*
 max-complexity = 18

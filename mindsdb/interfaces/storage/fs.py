@@ -27,6 +27,10 @@ except Exception:
 from mindsdb.utilities.config import Config
 from mindsdb.utilities.context import context as ctx
 import mindsdb.utilities.profiler as profiler
+from mindsdb.utilities import log
+from mindsdb.utilities.fs import safe_extract
+
+logger = log.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,19 @@ def get_dir_size(path: str):
     return total
 
 
+class AbsentFSStore(BaseFSStore):
+    """Storage class that does not store anything. It is just a dummy.
+    """
+    def get(self, *args, **kwargs):
+        pass
+
+    def put(self, *args, **kwargs):
+        pass
+
+    def delete(self, *args, **kwargs):
+        pass
+
+
 class LocalFSStore(BaseFSStore):
     """Storage that stores files locally
     """
@@ -191,10 +208,10 @@ class FileLock:
             fcntl.lockf(self._lock_fd, self._mode | fcntl.LOCK_NB)
         except (ValueError, FileNotFoundError):
             # file probably was deleted between open and lock
-            print(f'Cant accure lock on {self._local_path}')
+            logger.error(f'Cant accure lock on {self._local_path}')
             raise FileNotFoundError
         except BlockingIOError:
-            print(f'Directory is locked by another process: {self._local_path}')
+            logger.error(f'Directory is locked by another process: {self._local_path}')
             fcntl.lockf(self._lock_fd, self._mode)
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -296,7 +313,7 @@ class S3FSStore(BaseFSStore):
             fh = io.BytesIO()
             self.s3.download_fileobj(self.bucket, remote_ziped_name, fh)
             with tarfile.open(fileobj=fh) as tar:
-                tar.extractall(path=base_dir)
+                safe_extract(tar, path=base_dir)
         else:
             self.s3.download_file(self.bucket, remote_ziped_name, local_ziped_path)
             shutil.unpack_archive(local_ziped_path, base_dir)
@@ -389,12 +406,13 @@ class S3FSStore(BaseFSStore):
 
 def FsStore():
     storage_location = Config()['permanent_storage']['location']
+    if storage_location == 'absent':
+        return AbsentFSStore()
     if storage_location == 'local':
         return LocalFSStore()
-    elif storage_location == 's3':
+    if storage_location == 's3':
         return S3FSStore()
-    else:
-        raise Exception(f"Location: '{storage_location}' not supported")
+    raise Exception(f"Location: '{storage_location}' not supported")
 
 
 class FileStorage:
@@ -572,14 +590,19 @@ class FileStorage:
 
             # region del file lock
             lock_folder_path = FileLock.lock_folder_path(self.folder_path)
-            shutil.rmtree(lock_folder_path)
+            try:
+                shutil.rmtree(lock_folder_path)
+            except FileNotFoundError:
+                logger.warning('Tried to delete file not found: %s', lock_folder_path)
+            except Exception as e:
+                raise e
             # endregion
             return
 
-        with FileLock(self.folder_path, mode='w'):
-            if self.sync is True:
-                self._pull_no_lock()
+        if self.sync is True:
+            self.pull()
 
+        with FileLock(self.folder_path, mode='w'):
             if path.exists() is False:
                 raise Exception('Path does not exists')
 

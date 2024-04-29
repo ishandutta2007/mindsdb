@@ -1,12 +1,75 @@
+from enum import Enum
+from typing import Any
 import pandas as pd
 
+from mindsdb.api.executor.utilities.sql import query_df
 from mindsdb_sql.parser import ast
 from mindsdb_sql.parser.ast.base import ASTNode
 from mindsdb_sql.planner.utils import query_traversal
 
 
+class FilterOperator(Enum):
+    """
+    Enum for filter operators.
+    """
+
+    EQUAL = "="
+    NOT_EQUAL = "!="
+    LESS_THAN = "<"
+    LESS_THAN_OR_EQUAL = "<="
+    GREATER_THAN = ">"
+    GREATER_THAN_OR_EQUAL = ">="
+    IN = "IN"
+    NOT_IN = "NOT IN"
+    BETWEEN = "BETWEEN"
+    NOT_BETWEEN = "NOT BETWEEN"
+    LIKE = "LIKE"
+    NOT_LIKE = "NOT LIKE"
+    IS_NULL = "IS NULL"
+    IS_NOT_NULL = "IS NOT NULL"
+    IS = "IS"
+    IS_NOT = "IS NOT"
+
+
+class FilterCondition:
+    """
+    Base class for filter conditions.
+    """
+
+    def __init__(self, column: str, op: FilterOperator, value: Any):
+        self.column = column
+        self.op = op
+        self.value = value
+        self.applied = False
+
+    def __eq__(self, __value: object) -> bool:
+        if isinstance(__value, FilterCondition):
+            return (
+                self.column == __value.column
+                and self.op == __value.op
+                and self.value == __value.value
+            )
+        else:
+            return False
+
+    def __repr__(self) -> str:
+        return f"""
+            FilterCondition(
+                column={self.column},
+                op={self.op},
+                value={self.value}
+            )
+        """
+
+
+class SortColumn:
+    def __init__(self, column: str, ascending: bool = True):
+        self.column = column
+        self.ascending = ascending
+
+
 def make_sql_session():
-    from mindsdb.api.mysql.mysql_proxy.controllers.session_controller import SessionController
+    from mindsdb.api.executor.controllers.session_controller import SessionController
 
     sql_session = SessionController()
     sql_session.database = 'mindsdb'
@@ -104,6 +167,24 @@ def project_dataframe(df, targets, table_columns):
     if len(df_col_rename) > 0:
         df = df.rename(columns=df_col_rename)
     return df
+
+
+def filter_dataframe(df: pd.DataFrame, conditions: list):
+
+    # convert list of conditions to ast.
+    # assumes that list was got from extract_comparison_conditions
+    where_query = None
+    for op, arg1, arg2 in conditions:
+
+        item = ast.BinaryOperation(op=op, args=[ast.Identifier(arg1), ast.Constant(arg2)])
+        if where_query is None:
+            where_query = item
+        else:
+            where_query = ast.BinaryOperation(op='and', args=[where_query, item])
+
+    query = ast.Select(targets=[ast.Star()], from_table=ast.Identifier('df'), where=where_query)
+
+    return query_df(df, query)
 
 
 def sort_dataframe(df, order_by: list):

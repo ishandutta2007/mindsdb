@@ -123,11 +123,9 @@ If job was executed last time (and not going to be executed more) it is deleted 
 ## Querying jobs history:
 
 ```sql
-select * from jobs_history -- in current project
+select * from log.jobs_history -- all jobs history
 
-select * from proj2.jobs_history  -- in 'proj2' project 
-
-select * from information_schema.jobs_history  -- all jobs from all projects 
+select * from log.jobs_history where project = 'project-name' -- jobs history of a project
 ```
 
 Result columns: NAME, PROJECT, RUN_START, RUN_END, ERROR, QUERY
@@ -158,6 +156,7 @@ Contents information about current periodic tasks
 Columns:
 - name - name of the job defined by user
 - company_id, user_class - information about user
+- active - if not - job is not run
 - project_id - link to project, job with the same name can exist in different projects of the user
 - query_str - string of the query to execute inside the job
 - start_at - if specified, the date and time of first run of the job 

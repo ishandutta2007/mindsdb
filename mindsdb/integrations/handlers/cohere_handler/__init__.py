@@ -1,7 +1,7 @@
 from mindsdb.integrations.libs.const import HANDLER_TYPE
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 
-logger = get_log()
+logger = log.getLogger(__name__)
 
 from .__about__ import __version__ as version, __description__ as description
 try:
@@ -14,7 +14,8 @@ except Exception as e:
 title = 'Cohere'
 name = 'cohere'
 type = HANDLER_TYPE.ML
+icon_path = 'icon.svg'
 
 __all__ = [
-    'Handler', 'version', 'name', 'type', 'title', 'description', 'import_error'
+    'Handler', 'version', 'name', 'type', 'title', 'description', 'import_error', 'icon_path'
 ]

@@ -16,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     text,
-    types,
+    types
 )
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import (
@@ -124,21 +124,6 @@ class Json(types.TypeDecorator):
         return json.loads(value) if value is not None else None
 
 
-class Semaphor(Base):
-    __tablename__ = "semaphor"
-
-    id = Column(Integer, primary_key=True)
-    updated_at = Column(
-        DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now
-    )
-    created_at = Column(DateTime, default=datetime.datetime.now)
-    entity_type = Column("entity_type", String)
-    entity_id = Column("entity_id", Integer)
-    action = Column(String)
-    company_id = Column(Integer)
-    __table_args__ = (UniqueConstraint("entity_type", "entity_id", name="uniq_const"),)
-
-
 class PREDICTOR_STATUS:
     __slots__ = ()
     COMPLETE = "complete"
@@ -205,6 +190,17 @@ class Predictor(Base):
             version = int(parts[-1])
             name_no_version = ".".join(parts[:-1])
         return name_no_version, version
+
+
+Index(
+    "predictor_index",
+    Predictor.company_id,
+    Predictor.name,
+    Predictor.version,
+    Predictor.active,
+    Predictor.deleted_at,  # would be good to have here nullsfirst(Predictor.deleted_at)
+    unique=True
+)
 
 
 class Project(Base):
@@ -300,10 +296,12 @@ class Jobs(Base):
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer)
     user_class = Column(Integer, nullable=True)
+    active = Column(Boolean, default=True)
 
     name = Column(String, nullable=False)
     project_id = Column(Integer, nullable=False)
     query_str = Column(String, nullable=False)
+    if_query_str = Column(String, nullable=True)
     start_at = Column(DateTime, default=datetime.datetime.now)
     end_at = Column(DateTime)
     next_run_at = Column(DateTime)
@@ -370,7 +368,7 @@ class ChatBots(Base):
 class ChatBotsHistory(Base):
     __tablename__ = "chat_bots_history"
     id = Column(Integer, primary_key=True)
-    chat_bot_id = Column(Integer)
+    chat_bot_id = Column(Integer, nullable=False)
     type = Column(String)  # TODO replace to enum
     text = Column(String)
     user = Column(String)
@@ -537,3 +535,19 @@ class QueryContext(Base):
         DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now
     )
     created_at: datetime.datetime = Column(DateTime, default=datetime.datetime.now)
+
+
+class LLMLog(Base):
+    __tablename__ = "llm_log"
+    id: int = Column(Integer, primary_key=True)
+    company_id: int = Column(Integer, nullable=True)
+    api_key: str = Column(String, nullable=True)
+    model_id: int = Column(Integer, nullable=False)
+    input: str = Column(String, nullable=True)
+    output: str = Column(String, nullable=True)
+    start_time: datetime = Column(DateTime, nullable=False)
+    end_time: datetime = Column(DateTime, nullable=True)
+    prompt_tokens: int = Column(Integer, nullable=True)
+    completion_tokens: int = Column(Integer, nullable=True)
+    total_tokens: int = Column(Integer, nullable=True)
+    success: bool = Column(Boolean, nullable=False, default=True)

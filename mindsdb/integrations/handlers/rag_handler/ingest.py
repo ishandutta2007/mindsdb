@@ -1,23 +1,24 @@
 import time
+from typing import List
 
 import pandas as pd
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import VectorStore
+from langchain_community.vectorstores import VectorStore
 
 from mindsdb.integrations.handlers.rag_handler.settings import (
     PersistedVectorStoreSaver,
     PersistedVectorStoreSaverConfig,
-    RAGHandlerParameters,
+    RAGBaseParameters,
     VectorStoreFactory,
     df_to_documents,
-    get_chroma_settings,
+    get_chroma_client,
     load_embeddings_model,
     url_to_documents,
 )
-from mindsdb.utilities.log import get_log
+from mindsdb.utilities import log
 
-logger = get_log(__name__)
+logger = log.getLogger(__name__)
 
 
 def validate_document(doc) -> bool:
@@ -45,12 +46,12 @@ def validate_documents(documents) -> bool:
     return all([validate_document(doc) for doc in documents])
 
 
-class Ingestor:
+class RAGIngestor:
     """A class for converting a dataframe and/or url to a vectorstore embedded with a given embeddings model"""
 
     def __init__(
         self,
-        args: RAGHandlerParameters,
+        args: RAGBaseParameters,
         df: pd.DataFrame,
     ):
         self.args = args
@@ -75,7 +76,9 @@ class Ingestor:
             # if user provides a dataframe, load documents from dataframe
             documents.extend(
                 df_to_documents(
-                    df=self.df, page_content_columns=self.args.context_columns
+                    df=self.df,
+                    page_content_columns=self.args.context_columns,
+                    url_column_name=self.args.url_column_name,
                 )
             )
 
@@ -83,9 +86,12 @@ class Ingestor:
             # if user provides a url, load documents from url
             documents.extend(url_to_documents(self.args.url))
 
+        n_tokens = sum([len(doc.page_content) for doc in documents])
+
         # split documents into chunks of text
         texts = text_splitter.split_documents(documents)
         logger.info(f"Loaded {len(documents)} documents from input data")
+        logger.info(f"Total number of tokens: {n_tokens}")
         logger.info(f"Split into {len(texts)} chunks of text (tokens)")
 
         return texts
@@ -93,23 +99,18 @@ class Ingestor:
     def create_db_from_documents(self, documents, embeddings_model) -> VectorStore:
         """Create DB from documents."""
 
-        if self.args.vector_store_name == "chroma":
+        if self.args.vector_store_name == "chromadb":
 
             return self.vector_store.from_documents(
                 documents=documents,
                 embedding=embeddings_model,
-                persist_directory=self.args.vector_store_storage_path,
-                client_settings=get_chroma_settings(
+                client=get_chroma_client(
                     persist_directory=self.args.vector_store_storage_path
                 ),
                 collection_name=self.args.collection_name,
             )
         else:
-            return self.vector_store.from_documents(
-                documents=documents,
-                embedding=embeddings_model,
-                index_name=self.args.collection_name,
-            )
+            return self.create_db_from_texts(documents, embeddings_model)
 
     def create_db_from_texts(self, documents, embeddings_model) -> VectorStore:
         """Create DB from text content."""
@@ -120,6 +121,15 @@ class Ingestor:
         return self.vector_store.from_texts(
             texts=texts, embedding=embeddings_model, metadatas=metadata
         )
+
+    @staticmethod
+    def _create_batch_embeddings(documents: List[Document], embeddings_batch_size):
+        """
+        create batch of document embeddings
+        """
+
+        for i in range(0, len(documents), embeddings_batch_size):
+            yield documents[i: i + embeddings_batch_size]
 
     def embeddings_to_vectordb(self) -> None:
         """Create vectorstore from documents and store locally."""
@@ -132,7 +142,9 @@ class Ingestor:
         )
 
         # Load embeddings model
-        embeddings_model = load_embeddings_model(self.embeddings_model_name)
+        embeddings_model = load_embeddings_model(
+            self.embeddings_model_name, self.args.use_gpu
+        )
 
         logger.info(f"Creating vectorstore from documents")
 
@@ -142,16 +154,9 @@ class Ingestor:
         try:
             db = self.create_db_from_documents(documents, embeddings_model)
         except Exception as e:
-            logger.error(
-                f"Error loading using 'from_documents' method, trying 'from_text': {e}"
+            raise Exception(
+                f"Error loading embeddings to {self.args.vector_store_name}: {e}"
             )
-            try:
-                db = self.create_db_from_texts(documents, embeddings_model)
-                logger.info(f"successfully loaded using 'from_text' method: {e}")
-
-            except Exception as e:
-                logger.error(f"Error creating from texts: {e}")
-                raise e
 
         config = PersistedVectorStoreSaverConfig(
             vector_store_name=self.args.vector_store_name,
@@ -164,13 +169,17 @@ class Ingestor:
 
         vector_store_saver.save_vector_store(db)
 
-        db = None
+        db = None  # Free up memory
+
         end_time = time.time()
-        elapsed_time = end_time - start_time
+        elapsed_time = round(end_time - start_time)
 
-        logger.info(
-            "Fished creating vectorstore from documents. It took: {elapsed_time/60} minutes"
-        )
+        logger.info(f"Finished creating {self.args.vector_store_name} from texts, it has been "
+                    f"persisted to {self.args.vector_store_storage_path}")
 
-        logger.info("Finished creating vectorstore from documents.")
-        logger.info(f"Elapsed time: {round(elapsed_time / 60)} minutes")
+        time_minutes = round(elapsed_time / 60)
+
+        if time_minutes > 1:
+            logger.info(f"Elapsed time: {time_minutes} minutes")
+        else:
+            logger.info(f"Elapsed time: {elapsed_time} seconds")
